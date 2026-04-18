@@ -1,73 +1,79 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import yfinance as yf
 
-# Configuração de Interface para Celular
-st.set_page_config(page_title="Animais & Cia Wealth", layout="centered")
+# CONFIGURAÇÃO VISUAL "PLANNER"
+st.set_page_config(page_title="Wealth Planner Pro", layout="wide")
 
-# Estilização para parecer um App Nativo
 st.markdown("""
     <style>
-    .stApp { background-color: #0b0e14; }
-    [data-testid="stMetricValue"] { color: #38bdf8; font-size: 1.8rem !important; font-weight: 800; }
-    .stNumberInput input { background-color: #1e293b !important; color: white !important; border-radius: 10px; }
-    .stButton button { width: 100%; background: linear-gradient(90deg, #38bdf8, #818cf8); border: none; padding: 15px; border-radius: 15px; font-weight: bold; color: white; }
+    .stApp { background-color: #f8fafc; color: #1e293b; }
+    .metric-card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
+    h1, h2, h3 { color: #0f172a; font-weight: 800; }
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] { background-color: #f1f5f9; border-radius: 10px; padding: 10px 20px; color: #64748b; }
+    .stTabs [aria-selected="true"] { background-color: #38bdf8 !important; color: white !important; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🛡️ Wealth Manager")
-st.caption("Estratégia ARCA + Barsi • Hospital Animais & Cia")
+# --- FUNÇÃO PARA PEGAR PREÇOS REAIS ---
+@st.cache_data(ttl=600)
+def pegar_precos(tickers):
+    precos = {}
+    for t in tickers:
+        try:
+            acao = yf.Ticker(t + ".SA")
+            precos[t] = acao.history(period="1d")['Close'].iloc[-1]
+        except:
+            precos[t] = 0.0
+    return precos
 
-# --- ÁREA DE EDIÇÃO (INPUTS) ---
-with st.expander("📝 Atualizar Saldos Atuais", expanded=False):
-    aporte = st.number_input("Aporte do Mês (R$)", value=10000, step=1000)
+# ATIVOS DO MARCELO
+tickers_acoes = ["BBAS3", "CPLE6", "PSSA3"]
+tickers_fiis = ["ALZR11", "XPML11", "KNIP11"]
+
+st.title("🏦 Wealth Planner Pro")
+st.caption("Gestão Patrimonial Marcelo Stacciarini • Dados B3 em Tempo Real")
+
+tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "💎 Carteira B3", "⚙️ Ajustar Aporte"])
+
+# --- TELA 3: CONFIGURAÇÃO (FEITA PRIMEIRO PARA OS CÁLCULOS) ---
+with tab3:
+    st.subheader("Configurações do Mês")
+    aporte = st.number_input("Valor do Aporte Mensal (R$)", value=10000)
+    st.info("Insira a quantidade que você possui de cada ativo:")
+    col_a, col_b = st.columns(2)
+    qtd_bbas = col_a.number_input("Qtd BBAS3", value=100)
+    qtd_alzr = col_b.number_input("Qtd ALZR11", value=50)
+    # Adicione outros inputs conforme necessário
+
+# BUSCA DE PREÇOS REAIS
+precos = pegar_precos(tickers_acoes + tickers_fiis)
+
+# CÁLCULOS
+valor_acoes = (precos["BBAS3"] * qtd_bbas) # Exemplo simplificado
+valor_fiis = (precos["ALZR11"] * qtd_alzr)
+total_patrimonio = valor_acoes + valor_fiis
+
+# --- TELA 1: DASHBOARD ---
+with tab1:
     c1, c2 = st.columns(2)
-    s_acoes = c1.number_input("Ações (Barsi)", value=2500)
-    s_fii = c2.number_input("Real Estate", value=2500)
-    s_caixa = c1.number_input("Caixa/Hedge", value=2500)
-    s_int = c2.number_input("Internacional", value=2500)
+    with c1:
+        st.markdown(f'<div class="metric-card"><p style="margin:0;opacity:0.6">Patrimônio Total</p><h2>R$ {total_patrimonio:,.2f}</h2></div>', unsafe_allow_html=True)
+    with c2:
+        st.markdown(f'<div class="metric-card"><p style="margin:0;opacity:0.6">Aporte Projetado</p><h2 style="color:#38bdf8">R$ {aporte:,.2f}</h2></div>', unsafe_allow_html=True)
+    
+    # Gráfico Planner
+    fig = go.Figure(data=[go.Pie(labels=['Ações', 'FIIs'], values=[valor_acoes, valor_fiis], hole=.6)])
+    fig.update_layout(margin=dict(t=20, b=20, l=0, r=0), showlegend=True)
+    st.plotly_chart(fig, use_container_width=True)
 
-# --- CÁLCULOS E LÓGICA ---
-total_atual = s_acoes + s_fii + s_caixa + s_int
-total_futuro = total_atual + aporte
-meta = total_futuro / 4
-
-gaps = {
-    "Ações": max(0, meta - s_acoes),
-    "Real Estate": max(0, meta - s_fii),
-    "Caixa": max(0, meta - s_caixa),
-    "Internacional": max(0, meta - s_int)
-}
-total_gaps = sum(gaps.values())
-
-# --- DASHBOARD VISUAL ---
-st.markdown("### Resumo Patrimonial")
-m1, m2 = st.columns(2)
-m1.metric("Total Atual", f"R$ {total_atual:,.0f}")
-m2.metric("Meta p/ Classe", f"R$ {meta:,.0f}")
-
-# Gráfico Interativo
-fig = go.Figure(data=[go.Pie(
-    labels=list(gaps.keys()), 
-    values=[s_acoes, s_fii, s_caixa, s_int], 
-    hole=.7,
-    marker_colors=['#38bdf8', '#818cf8', '#4ade80', '#fb7185']
-)])
-fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-st.plotly_chart(fig, use_container_width=True)
-
-st.markdown("### 🛒 Onde Comprar Hoje")
-
-for classe, gap in gaps.items():
-    valor_classe = (gap / total_gaps) * aporte if total_gaps > 0 else aporte / 4
-    if valor_classe > 0:
-        st.markdown(f"""
-        <div style="background:#1e293b; padding:15px; border-radius:15px; margin-bottom:10px; border-left: 5px solid #38bdf8;">
-            <p style="margin:0; font-size:0.8rem; opacity:0.6;">{classe}</p>
-            <h2 style="margin:0; color:#4ade80;">R$ {valor_classe:,.2f}</h2>
-        </div>
-        """, unsafe_allow_html=True)
-        if classe == "Ações":
-            st.info(f"BBAS3: R$ {valor_classe/3:,.2f} | CPLE6: R$ {valor_classe/3:,.2f} | PSSA3: R$ {valor_classe/3:,.2f}")
-        elif classe == "Real Estate":
-            st.info(f"ALZR11: R$ {valor_classe/3:,.2f} | XPML11: R$ {valor_classe/3:,.2f} | KNIP11: R$ {valor_classe/3:,.2f}")
+# --- TELA 2: MINHA CARTEIRA (B3 REAL TIME) ---
+with tab2:
+    st.subheader("Cotações Atualizadas (15min delay)")
+    for t in tickers_acoes + tickers_fiis:
+        preco_atual = precos.get(t, 0)
+        st.write(f"**{t}**: R$ {preco_atual:.2f}")
+    
+    st.warning("Os dados são puxados automaticamente via Yahoo Finance.")
